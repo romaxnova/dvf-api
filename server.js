@@ -1,8 +1,13 @@
 const express = require('express');
 const fs = require('fs');
 const csv = require('csv-parser');
+const cors = require('cors'); // ✅ Add CORS support
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ✅ Enable CORS for all incoming requests
+app.use(cors());
 
 let dvfData = [];
 
