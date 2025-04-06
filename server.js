@@ -1,59 +1,17 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const csv = require('csv-parser');
 const cors = require('cors');
+const dotenv = require('dotenv');
+const { Pool } = require('pg');
+
+dotenv.config(); // Load .env file
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 app.use(cors());
 
-let dvfData = [];
-
-const dataRoot = path.join(__dirname, 'data');
-
-/**
- * Load all CSVs from any subfolder under /data/
- */
-function loadAllCSVFiles(rootDir) {
-  fs.readdir(rootDir, (err, folders) => {
-    if (err) return console.error('❌ Cannot read data directory:', err);
-
-    folders.forEach((subfolder) => {
-      const subDirPath = path.join(rootDir, subfolder);
-
-      fs.stat(subDirPath, (err, stats) => {
-        if (err || !stats.isDirectory()) return;
-
-        fs.readdir(subDirPath, (err, files) => {
-          if (err) return console.error(`❌ Failed to read ${subDirPath}:`, err);
-
-          const csvFiles = files.filter(f => f.endsWith('.csv'));
-          csvFiles.forEach(file => {
-            const filePath = path.join(subDirPath, file);
-            fs.createReadStream(filePath)
-              .pipe(csv({ separator: ',' }))
-              .on('data', (row) => {
-                dvfData.push(row); // ✅ Keep all years and all rows
-              })
-              .on('end', () => {
-                console.log(`✅ Loaded: ${filePath}`);
-              });
-          });
-        });
-      });
-    });
-  });
-}
-
-// Load everything at startup
-loadAllCSVFiles(dataRoot);
-
-/**
- * Serve filtered DVF data
- */
-app.get('/api/dvf', (req, res) => {
+app.get('/api/dvf', async (req, res) => {
   const {
     bbox,
     limit = 1000,
@@ -65,33 +23,69 @@ app.get('/api/dvf', (req, res) => {
     price_m2_max
   } = req.query;
 
-  const filtered = dvfData.filter(d => {
-    const lat = parseFloat(d.latitude);
-    const lon = parseFloat(d.longitude);
-    const date = new Date(d.date_mutation);
-    const year = date.getFullYear();
-    const price = parseFloat(d.valeur_fonciere);
-    const surface = parseFloat(d.surface_reelle_bati);
-    const priceM2 = surface > 0 ? price / surface : null;
+  try {
+    // Build dynamic SQL query
+    const conditions = [];
+    const values = [];
+    let idx = 1;
+
+    if (year_min) {
+      conditions.push(`EXTRACT(YEAR FROM date_mutation) >= $${idx++}`);
+      values.push(parseInt(year_min));
+    }
+
+    if (year_max) {
+      conditions.push(`EXTRACT(YEAR FROM date_mutation) <= $${idx++}`);
+      values.push(parseInt(year_max));
+    }
+
+    if (price_min) {
+      conditions.push(`valeur_fonciere >= $${idx++}`);
+      values.push(parseFloat(price_min));
+    }
+
+    if (price_max) {
+      conditions.push(`valeur_fonciere <= $${idx++}`);
+      values.push(parseFloat(price_max));
+    }
+
+    if (price_m2_min) {
+      conditions.push(`valeur_fonciere / NULLIF(surface_reelle_bati, 0) >= $${idx++}`);
+      values.push(parseFloat(price_m2_min));
+    }
+
+    if (price_m2_max) {
+      conditions.push(`valeur_fonciere / NULLIF(surface_reelle_bati, 0) <= $${idx++}`);
+      values.push(parseFloat(price_m2_max));
+    }
 
     if (bbox) {
       const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(parseFloat);
-      if (!(lat >= minLat && lat <= maxLat && lon >= minLng && lon <= maxLng)) {
-        return false;
-      }
+      conditions.push(`latitude BETWEEN $${idx} AND $${idx + 1}`);
+      values.push(minLat, maxLat);
+      idx += 2;
+      conditions.push(`longitude BETWEEN $${idx} AND $${idx + 1}`);
+      values.push(minLng, maxLng);
+      idx += 2;
     }
 
-    return (!year_min || year >= parseInt(year_min)) &&
-           (!year_max || year <= parseInt(year_max)) &&
-           (!price_min || price >= parseFloat(price_min)) &&
-           (!price_max || price <= parseFloat(price_max)) &&
-           (!price_m2_min || (priceM2 !== null && priceM2 >= parseFloat(price_m2_min))) &&
-           (!price_m2_max || (priceM2 !== null && priceM2 <= parseFloat(price_m2_max)));
-  });
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `
+      SELECT *
+      FROM dvf
+      ${whereClause}
+      LIMIT $${idx}
+    `;
+    values.push(parseInt(limit));
 
-  res.json(filtered.slice(0, parseInt(limit)));
+    const result = await pool.query(sql, values);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('❌ DVF query failed:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ DVF API running: http://localhost:${PORT}`);
+  console.log(`✅ DVF API (PostgreSQL) running on http://localhost:${PORT}`);
 });
