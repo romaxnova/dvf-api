@@ -1,4 +1,24 @@
-app.get('/api/dvf', (req, res) => {
+const express = require('express');
+const fs = require('fs');
+const csv = require('csv-parser');
+const cors = require('cors'); // ✅ Add CORS support
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ✅ Enable CORS for all incoming requests
+app.use(cors());
+
+let dvfData = [];
+
+fs.createReadStream('./data/dvf2024/75.csv')
+  .pipe(csv({ separator: ',' }))
+  .on('data', (row) => dvfData.push(row))
+  .on('end', () => {
+    console.log(`✅ Loaded ${dvfData.length} DVF records`);
+  });
+
+  app.get('/api/dvf', (req, res) => {
     const {
       bbox,
       limit = 1000,
@@ -35,5 +55,8 @@ app.get('/api/dvf', (req, res) => {
     });
   
     res.json(results.slice(0, parseInt(limit)));
-  });
-  
+  });  
+
+app.listen(PORT, () => {
+  console.log(`DVF API running: http://localhost:${PORT}`);
+});
