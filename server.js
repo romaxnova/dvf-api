@@ -4,6 +4,8 @@ const dotenv = require('dotenv');
 const { Pool } = require('pg');
 
 dotenv.config(); // Load .env file
+console.log("📦 Loaded DATABASE_URL:", process.env.DATABASE_URL);
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
