@@ -9,36 +9,57 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const dataDir = path.join(__dirname, 'data');
 
+// Full field list from your schema (excluding the auto ID)
+const FIELD_NAMES = [
+  'id_mutation', 'date_mutation', 'numero_disposition', 'nature_mutation', 'valeur_fonciere',
+  'adresse_numero', 'adresse_suffixe', 'adresse_nom_voie', 'adresse_code_voie',
+  'code_postal', 'code_commune', 'nom_commune', 'code_departement',
+  'ancien_code_commune', 'ancien_nom_commune', 'id_parcelle', 'ancien_id_parcelle',
+  'numero_volume', 'lot1_numero', 'lot1_surface_carrez', 'lot2_numero', 'lot2_surface_carrez',
+  'lot3_numero', 'lot3_surface_carrez', 'lot4_numero', 'lot4_surface_carrez',
+  'lot5_numero', 'lot5_surface_carrez', 'nombre_lots',
+  'code_type_local', 'type_local', 'surface_reelle_bati', 'nombre_pieces_principales',
+  'code_nature_culture', 'nature_culture', 'code_nature_culture_speciale',
+  'nature_culture_speciale', 'surface_terrain', 'longitude', 'latitude'
+];
+
 async function insertBatch(records) {
-  const query = `
-    INSERT INTO dvf (code_commune, date_mutation, valeur_fonciere, surface_reelle_bati, type_local, latitude, longitude)
-    VALUES ${records.map((_, i) => `($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}, $${i * 7 + 4}, $${i * 7 + 5}, $${i * 7 + 6}, $${i * 7 + 7})`).join(', ')}
-  `;
+  const valuesClause = records.map((_, i) => {
+    const offset = i * FIELD_NAMES.length;
+    const placeholders = FIELD_NAMES.map((_, j) => `$${offset + j + 1}`);
+    return `(${placeholders.join(', ')})`;
+  }).join(', ');
+
   const flatValues = records.flat();
+  const query = `INSERT INTO dvf (${FIELD_NAMES.join(', ')}) VALUES ${valuesClause}`;
+
   await pool.query(query, flatValues);
 }
 
 async function loadCSV(filePath) {
   return new Promise((resolve, reject) => {
     const rows = [];
+
     fs.createReadStream(filePath)
       .pipe(csv({ separator: ',' }))
       .on('data', (row) => {
-        const record = [
-          row.code_commune || null,
-          row.date_mutation || null,
-          parseFloat(row.valeur_fonciere) || null,
-          parseFloat(row.surface_reelle_bati) || null,
-          row.type_local || null,
-          parseFloat(row.latitude) || null,
-          parseFloat(row.longitude) || null
-        ];
+        const record = FIELD_NAMES.map(field => {
+          const val = row[field];
+          if (val === '') return null;
+          if (['valeur_fonciere', 'surface_reelle_bati', 'lot1_surface_carrez', 'lot2_surface_carrez', 'lot3_surface_carrez', 'lot4_surface_carrez', 'lot5_surface_carrez', 'surface_terrain', 'latitude', 'longitude'].includes(field)) {
+            return parseFloat(val.replace(',', '.')) || null;
+          }
+          if (['numero_disposition', 'nombre_lots', 'nombre_pieces_principales'].includes(field)) {
+            return parseInt(val) || null;
+          }
+          return val || null;
+        });
+
         rows.push(record);
       })
       .on('end', async () => {
         console.log(`📦 ${filePath} → ${rows.length} rows`);
 
-        // Insert in batches of 500
         for (let i = 0; i < rows.length; i += 500) {
           const batch = rows.slice(i, i + 500);
           await insertBatch(batch);
