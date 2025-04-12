@@ -167,8 +167,9 @@ app.get('/api/dvf/grouped', async (req, res) => {
         const carrez = row[`lot${i}_surface_carrez`];
         const surface = row.surface_reelle_bati || null;
         const type_local = row.type_local || null;
-
-        if (numero || carrez || surface) {
+      
+        // ✅ Only include real lots: must have a number OR carrez value
+        if (numero || carrez) {
           grouped[id].lots.push({
             lot_numero: numero || null,
             Surface: surface,
@@ -177,7 +178,7 @@ app.get('/api/dvf/grouped', async (req, res) => {
             nombre_pieces_principales: row.nombre_pieces_principales || null
           });
         }
-      }
+      }      
     }
 
     const result = Object.values(grouped);
