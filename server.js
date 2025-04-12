@@ -88,107 +88,115 @@ app.get('/api/dvf', async (req, res) => {
 
 // === /api/dvf/grouped (grouped by id_mutation) ===
 app.get('/api/dvf/grouped', async (req, res) => {
-    const { bbox, year_min, year_max, price_min, price_max } = req.query;
-  
-    const filters = [];
-    const values = [];
-    let idx = 1;
-  
-    if (bbox) {
-      const [lngMin, latMin, lngMax, latMax] = bbox.split(',').map(parseFloat);
-      filters.push(`latitude BETWEEN $${idx++} AND $${idx++}`);
-      values.push(latMin, latMax);
-      filters.push(`longitude BETWEEN $${idx++} AND $${idx++}`);
-      values.push(lngMin, lngMax);
-    }
-  
-    if (year_min) {
-      filters.push(`EXTRACT(YEAR FROM date_mutation) >= $${idx++}`);
-      values.push(year_min);
-    }
-  
-    if (year_max) {
-      filters.push(`EXTRACT(YEAR FROM date_mutation) <= $${idx++}`);
-      values.push(year_max);
-    }
-  
-    if (price_min) {
-      filters.push(`valeur_fonciere >= $${idx++}`);
-      values.push(price_min);
-    }
-  
-    if (price_max) {
-      filters.push(`valeur_fonciere <= $${idx++}`);
-      values.push(price_max);
-    }
-  
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-  
-    const query = `
-      SELECT 
-        id_mutation, 
-        date_mutation,
-        adresse_nom_voie, adresse_code_voie, adresse_numero, code_postal, nom_commune,
-        valeur_fonciere,
-        latitude, longitude,
-        type_local, nombre_pieces_principales,
-        surface_reelle_bati,
-        lot1_numero, lot1_surface_carrez,
-        lot2_numero, lot2_surface_carrez,
-        lot3_numero, lot3_surface_carrez,
-        lot4_numero, lot4_surface_carrez,
-        lot5_numero, lot5_surface_carrez
-      FROM dvf
-      ${whereClause}
-      ORDER BY date_mutation DESC
-      LIMIT 1000;
-    `;
-  
-    try {
-      const { rows } = await pool.query(query, values);
-  
-      // Group by id_mutation
-      const grouped = {};
-  
-      for (const row of rows) {
-        const id = row.id_mutation;
-        if (!grouped[id]) {
-          grouped[id] = {
-            id_mutation: id,
-            date_mutation: row.date_mutation,
-            valeur_fonciere: row.valeur_fonciere,
-            latitude: row.latitude,
-            longitude: row.longitude,
-            adresse: `${row.adresse_numero || ''} ${row.adresse_nom_voie || ''}, ${row.code_postal || ''} ${row.nom_commune || ''}`.trim(),
-            lots: []
-          };
-        }
-  
-        for (let i = 1; i <= 5; i++) {
-            const numero = row[`lot${i}_numero`];
-            const carrez = row[`lot${i}_surface_carrez`];
-            const type_local = row.type_local || null;
-            const surface = i === 1 ? row.surface_reelle_bati : null;
-          
-            if (numero || carrez || surface_reelle_bati) {
-              grouped[id].lots.push({
-                lot_numero: numero || null,
-                Surface: surface,
-                Carrez: carrez || null,
-                type_local,
-                nombre_pieces_principales: row.nombre_pieces_principales || null
-              });              
-            }
-          }                   
+  const { bbox, year_min, year_max, price_min, price_max } = req.query;
+
+  const filters = [];
+  const values = [];
+  let idx = 1;
+
+  if (bbox) {
+    const [lngMin, latMin, lngMax, latMax] = bbox.split(',').map(parseFloat);
+    filters.push(`latitude BETWEEN $${idx++} AND $${idx++}`);
+    values.push(latMin, latMax);
+    filters.push(`longitude BETWEEN $${idx++} AND $${idx++}`);
+    values.push(lngMin, lngMax);
+  }
+
+  if (year_min) {
+    filters.push(`EXTRACT(YEAR FROM date_mutation) >= $${idx++}`);
+    values.push(year_min);
+  }
+
+  if (year_max) {
+    filters.push(`EXTRACT(YEAR FROM date_mutation) <= $${idx++}`);
+    values.push(year_max);
+  }
+
+  if (price_min) {
+    filters.push(`valeur_fonciere >= $${idx++}`);
+    values.push(price_min);
+  }
+
+  if (price_max) {
+    filters.push(`valeur_fonciere <= $${idx++}`);
+    values.push(price_max);
+  }
+
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+  const query = `
+    SELECT 
+      id_mutation, 
+      date_mutation,
+      adresse_nom_voie, adresse_code_voie, adresse_numero, code_postal, nom_commune,
+      valeur_fonciere,
+      latitude, longitude,
+      type_local, nombre_pieces_principales,
+      surface_reelle_bati,
+      lot1_numero, lot1_surface_carrez,
+      lot2_numero, lot2_surface_carrez,
+      lot3_numero, lot3_surface_carrez,
+      lot4_numero, lot4_surface_carrez,
+      lot5_numero, lot5_surface_carrez
+    FROM dvf
+    ${whereClause}
+    ORDER BY date_mutation DESC
+    LIMIT 1000;
+  `;
+
+  try {
+    const { rows } = await pool.query(query, values);
+    const grouped = {};
+
+    for (const row of rows) {
+      const id = row.id_mutation;
+      if (!grouped[id]) {
+        grouped[id] = {
+          id_mutation: id,
+          date_mutation: row.date_mutation,
+          valeur_fonciere: row.valeur_fonciere,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          adresse: `${row.adresse_numero || ''} ${row.adresse_nom_voie || ''}, ${row.code_postal || ''} ${row.nom_commune || ''}`.trim(),
+          lots: []
+        };
       }
-  
-      const result = Object.values(grouped);
-      res.json(result);
-    } catch (error) {
-      console.error('❌ Grouped DVF API error:', error);
-      res.status(500).json({ error: 'Failed to fetch grouped DVF data' });
+
+      const lots = [];
+
+      for (let i = 1; i <= 5; i++) {
+        const lotNum = row[`lot${i}_numero`];
+        const lotCarrez = row[`lot${i}_surface_carrez`];
+
+        // Only push lot if there's something meaningful
+        if (lotNum || lotCarrez) {
+          lots.push({
+            lot_numero: lotNum || null,
+            Carrez: lotCarrez || null,
+            Surface: i === 1 ? row.surface_reelle_bati : null,  // Only attach surface once
+            type_local: row.type_local || null,
+            nombre_pieces_principales: row.nombre_pieces_principales || null
+          });
+        }
+      }
+
+      // Merge new lots with deduplication
+      grouped[id].lots.push(...lots.filter((newLot, index, self) =>
+        index === self.findIndex(l =>
+          l.lot_numero === newLot.lot_numero &&
+          l.Carrez === newLot.Carrez &&
+          l.Surface === newLot.Surface
+        )
+      ));
     }
-  });  
+
+    const result = Object.values(grouped);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Grouped DVF API error:', error);
+    res.status(500).json({ error: 'Failed to fetch grouped DVF data' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`✅ DVF API (PostgreSQL) running on http://localhost:${PORT}`);
