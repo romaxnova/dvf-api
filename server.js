@@ -168,16 +168,16 @@ app.get('/api/dvf/grouped', async (req, res) => {
             const numero = row[`lot${i}_numero`];
             const carrez = row[`lot${i}_surface_carrez`];
             const type_local = row.type_local || null;
-            const surface_reelle_bati = row.surface_reelle_bati || null;
+            const surface = i === 1 ? row.surface_reelle_bati : null;
           
             if (numero || carrez || surface_reelle_bati) {
               grouped[id].lots.push({
                 lot_numero: numero || null,
-                Surface: surface_reelle_bati || null,
+                Surface: surface,
                 Carrez: carrez || null,
                 type_local,
                 nombre_pieces_principales: row.nombre_pieces_principales || null
-              });
+              });              
             }
           }                   
       }
