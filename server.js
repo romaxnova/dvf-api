@@ -131,8 +131,7 @@ app.get('/api/dvf/grouped', async (req, res) => {
       adresse_nom_voie, adresse_code_voie, adresse_numero, code_postal, nom_commune,
       valeur_fonciere,
       latitude, longitude,
-      type_local, nombre_pieces_principales,
-      surface_reelle_bati,
+      type_local, nombre_pieces_principales, surface_reelle_bati,
       lot1_numero, lot1_surface_carrez,
       lot2_numero, lot2_surface_carrez,
       lot3_numero, lot3_surface_carrez,
@@ -146,6 +145,7 @@ app.get('/api/dvf/grouped', async (req, res) => {
 
   try {
     const { rows } = await pool.query(query, values);
+
     const grouped = {};
 
     for (const row of rows) {
@@ -162,32 +162,22 @@ app.get('/api/dvf/grouped', async (req, res) => {
         };
       }
 
-      const lots = [];
-
       for (let i = 1; i <= 5; i++) {
-        const lotNum = row[`lot${i}_numero`];
-        const lotCarrez = row[`lot${i}_surface_carrez`];
+        const numero = row[`lot${i}_numero`];
+        const carrez = row[`lot${i}_surface_carrez`];
+        const surface = row.surface_reelle_bati || null;
+        const type_local = row.type_local || null;
 
-        // Only push lot if there's something meaningful
-        if (lotNum || lotCarrez) {
-          lots.push({
-            lot_numero: lotNum || null,
-            Carrez: lotCarrez || null,
-            Surface: i === 1 ? row.surface_reelle_bati : null,  // Only attach surface once
-            type_local: row.type_local || null,
+        if (numero || carrez || surface) {
+          grouped[id].lots.push({
+            lot_numero: numero || null,
+            Surface: surface,
+            Carrez: carrez || null,
+            type_local,
             nombre_pieces_principales: row.nombre_pieces_principales || null
           });
         }
       }
-
-      // Merge new lots with deduplication
-      grouped[id].lots.push(...lots.filter((newLot, index, self) =>
-        index === self.findIndex(l =>
-          l.lot_numero === newLot.lot_numero &&
-          l.Carrez === newLot.Carrez &&
-          l.Surface === newLot.Surface
-        )
-      ));
     }
 
     const result = Object.values(grouped);
