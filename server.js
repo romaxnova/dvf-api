@@ -132,6 +132,7 @@ app.get('/api/dvf/grouped', async (req, res) => {
         valeur_fonciere,
         latitude, longitude,
         type_local, nombre_pieces_principales,
+        surface_reelle_bati,
         lot1_numero, lot1_surface_carrez,
         lot2_numero, lot2_surface_carrez,
         lot3_numero, lot3_surface_carrez,
@@ -163,19 +164,22 @@ app.get('/api/dvf/grouped', async (req, res) => {
           };
         }
   
-        // Unpivot only surface_carrez-based lots
         for (let i = 1; i <= 5; i++) {
-          const numero = row[`lot${i}_numero`];
-          const carrez = row[`lot${i}_surface_carrez`];
-          if (numero || carrez) {
-            grouped[id].lots.push({
-              lot_numero: numero || null,
-              surface_carrez: carrez || null,
-              type_local: row.type_local || null,
-              nombre_pieces_principales: row.nombre_pieces_principales || null
-            });
-          }
-        }
+            const numero = row[`lot${i}_numero`];
+            const carrez = row[`lot${i}_surface_carrez`];
+            const type_local = row.type_local || null;
+            const surface_reelle_bati = row.surface_reelle_bati || null;
+          
+            if (numero || carrez || surface_reelle_bati) {
+              grouped[id].lots.push({
+                lot_numero: numero || null,
+                Surface: surface_reelle_bati || null,
+                Carrez: carrez || null,
+                type_local,
+                nombre_pieces_principales: row.nombre_pieces_principales || null
+              });
+            }
+          }                   
       }
   
       const result = Object.values(grouped);
